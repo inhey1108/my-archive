@@ -1,0 +1,340 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5f4f1;
+  --foreground: #242323;
+
+  --archive-bg: #f5f4f1;
+  --archive-text: #242323;
+  --archive-muted: #77746d;
+  --archive-border: #deddd8;
+  --archive-card: #ffffff;
+  --archive-accent: #242323;
+  --archive-hover: #eeece8;
+  --archive-soft: #f8f7f4;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+html {
+  background: var(--archive-bg);
+  color: var(--archive-text);
+}
+
+body {
+  background: var(--archive-bg);
+  color: var(--archive-text);
+  font-family: Arial, Helvetica, sans-serif;
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+/* =========================================================
+   ARCHIVE LAYOUT
+========================================================= */
+
+.archive-shell {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+  background: var(--archive-bg);
+}
+
+.archive-content {
+  width: calc(100% - 220px);
+  min-width: 0;
+  min-height: 100vh;
+  margin-left: 220px;
+  background: var(--archive-bg);
+}
+
+/* =========================================================
+   SIDEBAR
+========================================================= */
+
+.archive-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  width: 220px;
+  height: 100vh;
+  border-right: 1px solid var(--archive-border);
+  background: var(--archive-bg);
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 34px 22px 24px;
+}
+
+/* =========================================================
+   LOGO
+========================================================= */
+
+.archive-logo {
+  display: block;
+  width: fit-content;
+  color: var(--archive-text);
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+.logo-short {
+  display: none;
+}
+
+/* =========================================================
+   NAVIGATION
+========================================================= */
+
+.archive-nav {
+  display: flex;
+  flex-direction: column;
+  margin-top: 58px;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.archive-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  color: var(--archive-muted);
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition:
+    color 0.18s ease,
+    background 0.18s ease;
+}
+
+.archive-nav-link:hover {
+  color: var(--archive-text);
+  background: var(--archive-hover);
+}
+
+.archive-nav-link.active {
+  color: var(--archive-text);
+  background: var(--archive-hover);
+}
+
+.nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.nav-icon svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+.nav-label {
+  white-space: nowrap;
+}
+
+.nav-divider {
+  width: calc(100% - 18px);
+  height: 1px;
+  margin: 22px 9px;
+  background: var(--archive-border);
+}
+
+.settings-link {
+  margin-top: 0;
+}
+
+/* =========================================================
+   SIDEBAR FOOTER
+========================================================= */
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: auto;
+  padding: 0 9px;
+  color: var(--archive-muted);
+  opacity: 0.55;
+  font-size: 7px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* =========================================================
+   MOBILE / TABLET
+========================================================= */
+
+@media (max-width: 1000px) {
+  .archive-sidebar {
+    width: 78px;
+  }
+
+  .sidebar-inner {
+    align-items: center;
+    padding: 28px 9px 20px;
+  }
+
+  .archive-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border: 1px solid var(--archive-border);
+    border-radius: 50%;
+    font-size: 11px;
+    letter-spacing: -0.05em;
+  }
+
+  .logo-full {
+    display: none;
+  }
+
+  .logo-short {
+    display: block;
+  }
+
+  .archive-nav {
+    width: 100%;
+    margin-top: 42px;
+  }
+
+  .nav-group {
+    width: 100%;
+    gap: 5px;
+  }
+
+  .archive-nav-link {
+    justify-content: center;
+    width: 100%;
+    min-height: 42px;
+    padding: 8px 4px;
+    border-radius: 9px;
+  }
+
+  .nav-icon {
+    width: 21px;
+    height: 21px;
+  }
+
+  .nav-icon svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .nav-label {
+    display: none;
+  }
+
+  .nav-divider {
+    width: 42px;
+    margin: 22px auto;
+  }
+
+  .sidebar-footer {
+    display: none;
+  }
+
+  .archive-content {
+    width: calc(100% - 78px);
+    margin-left: 78px;
+  }
+}
+
+@media (max-width: 600px) {
+  .archive-sidebar {
+    width: 64px;
+  }
+
+  .sidebar-inner {
+    padding: 22px 7px 18px;
+  }
+
+  .archive-logo {
+    width: 38px;
+    height: 38px;
+    font-size: 10px;
+  }
+
+  .archive-nav {
+    margin-top: 34px;
+  }
+
+  .archive-nav-link {
+    min-height: 38px;
+    border-radius: 8px;
+  }
+
+  .nav-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .nav-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .nav-divider {
+    width: 36px;
+    margin: 18px auto;
+  }
+
+  .archive-content {
+    width: calc(100% - 64px);
+    margin-left: 64px;
+  }
+}
