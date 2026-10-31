@@ -276,11 +276,12 @@ function PromptDetailContent() {
       return;
     }
 
+    const currentPrompt = prompt;
     let cancelled = false;
 
     async function loadImages() {
       const urls = await Promise.all(
-        (prompt.imageIds ?? []).map((imageId) =>
+        (currentPrompt.imageIds ?? []).map((imageId) =>
           getImageFromDB(imageId),
         ),
       );

@@ -164,7 +164,6 @@ export default function Home() {
 
         context.drawImage(image, 0, 0, width, height);
         setDecorImage(canvas.toDataURL("image/jpeg", 0.82));
-        setDecorMode("image");
       };
 
       image.src = String(reader.result);
