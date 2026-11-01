@@ -265,23 +265,29 @@ function NoteDetailContent() {
           </Link>
 
           <div className="actions">
-            <button
-              type="button"
-              className="action-button"
-              onClick={handleEdit}
-            >
-              EDIT
-            </button>
+  <button
+    type="button"
+    className="action-button"
+    style={{
+      borderRadius: "999px",
+    }}
+    onClick={handleEdit}
+  >
+    EDIT
+  </button>
 
-            {isOwner && (
-              <button
-                type="button"
-                className="action-button"
-                onClick={handleDelete}
-              >
-                DELETE
-              </button>
-            )}
+  {isOwner && (
+    <button
+      type="button"
+      className="action-button"
+      style={{
+        borderRadius: "999px",
+      }}
+      onClick={handleDelete}
+    >
+      DELETE
+    </button>
+  )}
           </div>
         </header>
 

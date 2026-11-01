@@ -9,9 +9,6 @@ import type { User } from "@supabase/supabase-js";
 const PROMPT_STORAGE_KEY = "my-archive-prompts";
 const CHARACTER_STORAGE_KEY = "my-archive-characters";
 const PAIR_STORAGE_KEY = "my-archive-pairs";
-const IMAGE_DB_NAME = "my-archive-db";
-const IMAGE_DB_VERSION = 1;
-const IMAGE_STORE = "character-images";
 
 const CATEGORIES = [
   "캐릭터 행동 지침",
@@ -63,27 +60,31 @@ function savePrompts(prompts: Prompt[]) {
   localStorage.setItem(PROMPT_STORAGE_KEY, JSON.stringify(prompts));
 }
 
-function openImageDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(IMAGE_DB_NAME, IMAGE_DB_VERSION);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
+const IMAGE_BUCKET = "archive-images";
 
 async function saveImageToDB(blob: Blob): Promise<string> {
+  const supabase = createClient();
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("로그인이 필요합니다.");
+  }
+
   const id = crypto.randomUUID();
-  const db = await openImageDB();
+  const path = `${user.id}/${id}`;
 
-  await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(IMAGE_STORE, "readwrite");
-    const store = transaction.objectStore(IMAGE_STORE);
-    const value = store.keyPath ? { id, blob } : { blob };
-    const request = store.keyPath ? store.put(value) : store.put(value, id);
+  const { error } = await supabase.storage
+    .from(IMAGE_BUCKET)
+    .upload(path, blob, {
+      contentType: blob.type || "image/png",
+      upsert: true,
+    });
 
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  if (error) throw error;
 
   return id;
 }
@@ -92,48 +93,46 @@ async function getImageFromDB(id?: string): Promise<string> {
   if (!id) return "";
 
   try {
-    const db = await openImageDB();
+    const supabase = createClient();
 
-    return await new Promise((resolve, reject) => {
-      const transaction = db.transaction(IMAGE_STORE, "readonly");
-      const store = transaction.objectStore(IMAGE_STORE);
-      const request = store.get(id);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-      request.onsuccess = () => {
-        const value = request.result;
-        const blob =
-          value instanceof Blob
-            ? value
-            : value?.blob instanceof Blob
-              ? value.blob
-              : null;
+    if (userError || !user) return "";
 
-        resolve(blob ? URL.createObjectURL(blob) : "");
-      };
+    const path = `${user.id}/${id}`;
+    const { data, error } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .download(path);
 
-      request.onerror = () => reject(request.error);
-    });
+    if (error || !data) return "";
+
+    return URL.createObjectURL(data);
   } catch {
     return "";
   }
 }
 
-async function deleteImageFromDB(id?: string) {
+async function deleteImageFromDB(id?: string): Promise<void> {
   if (!id) return;
 
   try {
-    const db = await openImageDB();
+    const supabase = createClient();
 
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(IMAGE_STORE, "readwrite");
-      const store = transaction.objectStore(IMAGE_STORE);
-      const request = store.delete(id);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+    if (userError || !user) return;
+
+    await supabase.storage
+      .from(IMAGE_BUCKET)
+      .remove([`${user.id}/${id}`]);
   } catch {
-    // 이미지가 이미 삭제되었거나 IndexedDB를 사용할 수 없는 경우 무시
+    // 이미지가 이미 삭제되었거나 Storage를 사용할 수 없는 경우 무시
   }
 }
 

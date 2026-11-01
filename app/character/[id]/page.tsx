@@ -41,114 +41,107 @@ type EditImage = {
   url: string;
 };
 
-const DB_NAME = "my-archive-db";
-const DB_VERSION = 1;
-const IMAGE_STORE = "character-images";
 const CHARACTER_STORAGE_KEY = "my-archive-characters";
 
-function openImageDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+const IMAGE_BUCKET = "archive-images";
 
-    request.onupgradeneeded = () => {
-      const db = request.result;
+/* =========================================================
+   Supabase Storage
+========================================================= */
 
-      if (!db.objectStoreNames.contains(IMAGE_STORE)) {
-        db.createObjectStore(IMAGE_STORE);
-      }
-    };
+const saveImageToDB = async (dataUrl: string): Promise<string> => {
+  const supabase = createClient();
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
 
-function saveImageToDB(dataUrl: string): Promise<string> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const db = await openImageDB();
+  if (userError || !user) {
+    throw new Error("로그인이 필요합니다.");
+  }
 
-      const response = await fetch(dataUrl);
-      const blob = await response.blob();
+  const id = crypto.randomUUID();
 
-      const id = crypto.randomUUID();
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
 
-      const transaction = db.transaction(IMAGE_STORE, "readwrite");
-      const store = transaction.objectStore(IMAGE_STORE);
+  const path = `${user.id}/${id}`;
 
-      store.put(blob, id);
+  const { error } = await supabase.storage
+    .from(IMAGE_BUCKET)
+    .upload(path, blob, {
+      contentType: blob.type || "image/png",
+      upsert: true,
+    });
 
-      transaction.oncomplete = () => {
-        db.close();
-        resolve(id);
-      };
+  if (error) {
+    throw error;
+  }
 
-      transaction.onerror = () => {
-        db.close();
-        reject(transaction.error);
-      };
-    } catch (error) {
-      reject(error);
+  return id;
+};
+
+const deleteImageFromDB = async (
+  id: string
+): Promise<void> => {
+  if (!id) return;
+
+  try {
+    const supabase = createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return;
     }
-  });
-}
 
-function deleteImageFromDB(id: string): Promise<void> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const db = await openImageDB();
+    const path = `${user.id}/${id}`;
 
-      const transaction = db.transaction(IMAGE_STORE, "readwrite");
-      const store = transaction.objectStore(IMAGE_STORE);
+    await supabase.storage
+      .from(IMAGE_BUCKET)
+      .remove([path]);
+  } catch {
+    // 이미지가 이미 삭제되었거나 Storage를 사용할 수 없는 경우 무시
+  }
+};
 
-      store.delete(id);
+const getImageFromDB = async (
+  id: string
+): Promise<string | null> => {
+  if (!id) return null;
 
-      transaction.oncomplete = () => {
-        db.close();
-        resolve();
-      };
+  try {
+    const supabase = createClient();
 
-      transaction.onerror = () => {
-        db.close();
-        reject(transaction.error);
-      };
-    } catch (error) {
-      reject(error);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return null;
     }
-  });
-}
 
-function getImageFromDB(id: string): Promise<string | null> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const db = await openImageDB();
+    const path = `${user.id}/${id}`;
 
-      const transaction = db.transaction(IMAGE_STORE, "readonly");
-      const store = transaction.objectStore(IMAGE_STORE);
-      const request = store.get(id);
+    const { data, error } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .download(path);
 
-      request.onsuccess = () => {
-        const blob = request.result;
-
-        db.close();
-
-        if (!blob) {
-          resolve(null);
-          return;
-        }
-
-        resolve(URL.createObjectURL(blob));
-      };
-
-      request.onerror = () => {
-        db.close();
-        reject(request.error);
-      };
-    } catch (error) {
-      reject(error);
+    if (error || !data) {
+      return null;
     }
-  });
-}
+
+    return URL.createObjectURL(data);
+  } catch {
+    return null;
+  }
+};
+
 
 function CharacterDetailContent() {
   const params = useParams();
@@ -821,7 +814,7 @@ function CharacterDetailContent() {
       <main className="min-h-screen bg-[#f7f6f2] px-5 py-8 text-[#171717] sm:px-8 lg:px-12">
         <button
           onClick={() => router.push("/character")}
-          className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2.5 text-[10px] font-medium tracking-[0.12em] text-black/50 shadow-sm transition hover:border-black/20 hover:text-black"
+          className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3.5 py-2 text-[9px] font-medium tracking-[0.12em] text-black/50 shadow-sm transition hover:border-black/20 hover:text-black"
         >
           ← BACK TO CHARACTERS
         </button>
@@ -843,11 +836,16 @@ function CharacterDetailContent() {
       <main className="mx-auto w-full max-w-[1500px] px-5 pb-20 pt-8 sm:px-8 lg:px-12">
         {/* BACK */}
         <button
-          onClick={() => router.push("/character")}
-          className="mb-7 inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2.5 text-[10px] font-medium tracking-[0.12em] text-black/50 shadow-sm transition hover:border-black/20 hover:text-black"
-        >
-          ← BACK TO CHARACTERS
-        </button>
+  onClick={() => router.push("/character")}
+  className="mb-7 inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3.5 py-2 font-medium tracking-[0.12em] text-black/50 shadow-sm transition hover:border-black/20 hover:text-black"
+  style={{
+    fontSize: "9px",
+    lineHeight: 1,
+    fontFamily: "inherit",
+  }}
+>
+  ← BACK TO CHARACTERS
+</button>
 
         {/* CHARACTER PROFILE */}
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(320px,420px)_1fr] lg:gap-8">
@@ -919,11 +917,16 @@ function CharacterDetailContent() {
               </div>
 
               <button
-                onClick={openCharacterEdit}
-                  className="shrink-0 rounded-full border border-black/10 bg-[#f7f6f2] px-4 py-2.5 text-[7px] font-medium tracking-[0.1em] text-black/50 transition hover:border-black/20 hover:bg-black hover:text-white"
-                >
-                  EDIT
-                </button>
+  onClick={openCharacterEdit}
+  className="shrink-0 rounded-full border border-black/10 bg-[#f7f6f2] px-3.5 py-2 font-medium tracking-[0.1em] text-black/50 transition hover:border-black/20 hover:bg-black hover:text-white"
+  style={{
+    fontSize: "6px",
+    lineHeight: 1,
+    fontFamily: "inherit",
+  }}
+>
+  EDIT
+</button>
             </div>
 
             <div className="mt-8 h-px bg-black/8" />
@@ -982,21 +985,26 @@ function CharacterDetailContent() {
             </div>
 
             <button
-              onClick={() => {
-                if (!user) {
-                  router.push(
-                    `/login?redirect=${encodeURIComponent(`/character/${characterId}`)}`
-                  );
-                  return;
-                }
+  onClick={() => {
+    if (!user) {
+      router.push(
+        `/login?redirect=${encodeURIComponent(`/character/${characterId}`)}`
+      );
+      return;
+    }
 
-                resetProfileForm();
-                setIsAddingProfile(true);
-              }}
-                className="inline-flex w-fit items-center rounded-full bg-[#171717] px-5 py-3 text-[10px] font-medium tracking-[0.1em] text-white transition hover:bg-black/75"
-              >
-                + ADD PROFILE
-              </button>
+    resetProfileForm();
+    setIsAddingProfile(true);
+  }}
+  className="inline-flex w-fit items-center rounded-full bg-[#171717] px-4 py-2.5 font-medium tracking-[0.1em] text-white transition hover:bg-black/75"
+  style={{
+    fontSize: "9px",
+    lineHeight: 1,
+    fontFamily: "inherit",
+  }}
+>
+  + ADD PROFILE
+</button>
           </div>
 
           {profiles.length === 0 ? (

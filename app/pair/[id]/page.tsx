@@ -5,9 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-const DB_NAME = "my-archive-db";
-const DB_VERSION = 1;
-const IMAGE_STORE = "character-images";
+const IMAGE_BUCKET = "archive-images";
 const PAIR_STORAGE_KEY = "my-archive-pairs";
 const CHARACTER_STORAGE_KEY = "my-archive-characters";
 
@@ -42,51 +40,26 @@ type Character = {
   imageIds?: string[];
 };
 
-function openImageDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
 async function getImageFromDB(id?: string): Promise<string> {
   if (!id) return "";
 
   try {
-    const db = await openImageDB();
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-    return await new Promise((resolve, reject) => {
-      const transaction = db.transaction(IMAGE_STORE, "readonly");
-      const store = transaction.objectStore(IMAGE_STORE);
-      const request = store.get(id);
+    if (userError || !user) return "";
 
-      request.onsuccess = () => {
-        const value = request.result;
+    const path = `${user.id}/${id}`;
+    const { data, error } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .download(path);
 
-        if (!value) {
-          resolve("");
-          return;
-        }
+    if (error || !data) return "";
 
-        const blob =
-          value instanceof Blob
-            ? value
-            : value?.blob instanceof Blob
-              ? value.blob
-              : null;
-
-        if (!blob) {
-          resolve("");
-          return;
-        }
-
-        resolve(URL.createObjectURL(blob));
-      };
-
-      request.onerror = () => reject(request.error);
-    });
+    return URL.createObjectURL(data);
   } catch {
     return "";
   }
@@ -385,18 +358,23 @@ function PairDetailContent() {
           <div className="flex items-center gap-2">
   <Link
     href={`/pair?edit=${pair.id}`}
-    className="inline-flex h-[30px] items-center justify-center rounded-full border border-[var(--archive-border)] bg-[var(--archive-card)] px-3 text-[7px] font-medium tracking-[0.08em] text-[var(--archive-muted)] transition hover:border-[var(--archive-border)] hover:bg-[var(--archive-hover)]"
+    className="inline-flex h-[30px] items-center justify-center rounded-full border border-[var(--archive-border)] bg-[var(--archive-card)] px-3 text-[7px] leading-none font-medium tracking-[0.08em] text-[var(--archive-muted)] transition hover:border-[var(--archive-border)] hover:bg-[var(--archive-hover)]"
   >
     EDIT
   </Link>
 
   <button
-    type="button"
-    onClick={handleDelete}
-    className="inline-flex h-[30px] items-center justify-center rounded-full border border-[var(--archive-border)] bg-[var(--archive-card)] px-3 text-[7px] font-medium tracking-[0.08em] text-[var(--archive-muted)] transition hover:border-[var(--archive-border)] hover:bg-[var(--archive-hover)]"
-  >
-    DELETE
-  </button>
+  type="button"
+  onClick={handleDelete}
+  className="inline-flex h-[30px] items-center justify-center rounded-full border border-[var(--archive-border)] bg-[var(--archive-card)] px-3 text-[7px] leading-none font-medium tracking-[0.08em] text-[var(--archive-muted)] transition hover:border-[var(--archive-border)] hover:bg-[var(--archive-hover)]"
+  style={{
+    fontSize: "7px",
+    lineHeight: 1,
+    fontFamily: "inherit",
+  }}
+>
+  DELETE
+</button>
 </div>
 
         </header>

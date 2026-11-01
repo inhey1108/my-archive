@@ -7,9 +7,6 @@ import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
 const PROMPT_STORAGE_KEY = "my-archive-prompts";
-const IMAGE_DB_NAME = "my-archive-db";
-const IMAGE_DB_VERSION = 1;
-const IMAGE_STORE = "character-images";
 
 type Prompt = {
   id: string;
@@ -27,41 +24,29 @@ type Prompt = {
   imageIds?: string[];
 };
 
-function openImageDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(IMAGE_DB_NAME, IMAGE_DB_VERSION);
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
+const IMAGE_BUCKET = "archive-images";
 
 async function getImageFromDB(id?: string): Promise<string> {
   if (!id) return "";
 
   try {
-    const db = await openImageDB();
+    const supabase = createClient();
 
-    return await new Promise((resolve, reject) => {
-      const transaction = db.transaction(IMAGE_STORE, "readonly");
-      const store = transaction.objectStore(IMAGE_STORE);
-      const request = store.get(id);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-      request.onsuccess = () => {
-        const value = request.result;
+    if (userError || !user) return "";
 
-        const blob =
-          value instanceof Blob
-            ? value
-            : value?.blob instanceof Blob
-              ? value.blob
-              : null;
+    const path = `${user.id}/${id}`;
+    const { data, error } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .download(path);
 
-        resolve(blob ? URL.createObjectURL(blob) : "");
-      };
+    if (error || !data) return "";
 
-      request.onerror = () => reject(request.error);
-    });
+    return URL.createObjectURL(data);
   } catch {
     return "";
   }

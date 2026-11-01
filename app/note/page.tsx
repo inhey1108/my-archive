@@ -542,22 +542,24 @@ export default function NotePage() {
           </label>
 
           <div className="editor-actions">
-            {editingId && (
-              <button
-                className="delete-button"
-                onClick={() => deleteNote(editingId)}
-              >
-                DELETE
-              </button>
-            )}
+  {editingId && (
+    <button
+      className="delete-button"
+      style={{ borderRadius: "999px" }}
+      onClick={() => deleteNote(editingId)}
+    >
+      DELETE
+    </button>
+  )}
 
-            <div className="editor-actions-right">
-              <button
-                className="cancel-button"
-                onClick={resetEditor}
-              >
-                CANCEL
-              </button>
+  <div className="editor-actions-right">
+    <button
+      className="cancel-button"
+      style={{ borderRadius: "999px" }}
+      onClick={resetEditor}
+    >
+      CANCEL
+    </button>
 
               <button
                 className="save-button"
@@ -767,6 +769,7 @@ export default function NotePage() {
         .primary-button,
         .save-button {
           border: 1px solid var(--archive-text);
+          border-radius: 999px;
           background: var(--archive-text);
           color: var(--archive-card);
           padding: 13px 18px;

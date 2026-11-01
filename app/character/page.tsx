@@ -39,129 +39,104 @@ type CharacterRow = {
 };
 
 
-const DB_NAME = "my-archive-db";
-const DB_VERSION = 1;
-const IMAGE_STORE = "character-images";
 const CHARACTER_STORAGE_KEY = "my-archive-characters";
 
+const IMAGE_BUCKET = "archive-images";
+
 /* =========================================================
-   IndexedDB
+   Supabase Storage
 ========================================================= */
 
-const openImageDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    if (typeof window === "undefined" || !window.indexedDB) {
-      reject(new Error("IndexedDB를 사용할 수 없습니다."));
-      return;
-    }
-
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = () => {
-      const db = request.result;
-
-      if (!db.objectStoreNames.contains(IMAGE_STORE)) {
-        db.createObjectStore(IMAGE_STORE);
-      }
-    };
-
-    request.onsuccess = () => {
-      resolve(request.result);
-    };
-
-    request.onerror = () => {
-      reject(request.error);
-    };
-  });
-};
-
 const saveImageToDB = async (dataUrl: string): Promise<string> => {
-  const db = await openImageDB();
+  const supabase = createClient();
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("로그인이 필요합니다.");
+  }
 
   const id = crypto.randomUUID();
 
   const response = await fetch(dataUrl);
   const blob = await response.blob();
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(IMAGE_STORE, "readwrite");
-    const store = transaction.objectStore(IMAGE_STORE);
+  const path = `${user.id}/${id}`;
 
-    const request = store.put(blob, id);
+  const { error } = await supabase.storage
+    .from(IMAGE_BUCKET)
+    .upload(path, blob, {
+      contentType: blob.type || "image/png",
+      upsert: true,
+    });
 
-    request.onsuccess = () => {
-      db.close();
-      resolve(id);
-    };
+  if (error) {
+    throw error;
+  }
 
-    request.onerror = () => {
-      db.close();
-      reject(request.error);
-    };
-  });
+  return id;
 };
 
 const getImageFromDB = async (
   id: string
 ): Promise<string | null> => {
-  const db = await openImageDB();
+  if (!id) return null;
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(IMAGE_STORE, "readonly");
-    const store = transaction.objectStore(IMAGE_STORE);
+  try {
+    const supabase = createClient();
 
-    const request = store.get(id);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-    request.onsuccess = () => {
-      const blob = request.result;
+    if (userError || !user) {
+      return null;
+    }
 
-      if (!blob) {
-        db.close();
-        resolve(null);
-        return;
-      }
+    const path = `${user.id}/${id}`;
 
-      const url = URL.createObjectURL(blob);
+    const { data, error } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .download(path);
 
-      db.close();
-      resolve(url);
-    };
+    if (error || !data) {
+      return null;
+    }
 
-    request.onerror = () => {
-      db.close();
-      reject(request.error);
-    };
-  });
+    return URL.createObjectURL(data);
+  } catch {
+    return null;
+  }
 };
 
 const deleteImageFromDB = async (
   id: string
 ): Promise<void> => {
+  if (!id) return;
+
   try {
-    const db = await openImageDB();
+    const supabase = createClient();
 
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(
-        IMAGE_STORE,
-        "readwrite"
-      );
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-      const store = transaction.objectStore(IMAGE_STORE);
+    if (userError || !user) {
+      return;
+    }
 
-      const request = store.delete(id);
+    const path = `${user.id}/${id}`;
 
-      request.onsuccess = () => {
-        db.close();
-        resolve();
-      };
-
-      request.onerror = () => {
-        db.close();
-        reject(request.error);
-      };
-    });
+    await supabase.storage
+      .from(IMAGE_BUCKET)
+      .remove([path]);
   } catch {
-    // 이미지가 이미 없는 경우 무시
+    // 이미지가 이미 삭제되었거나 Storage를 사용할 수 없는 경우 무시
   }
 };
 
@@ -360,11 +335,14 @@ export default function CharacterPage() {
   ========================================================= */
 
   useEffect(() => {
+    let isMounted = true;
     const loadCharacters = async () => {
       try {
         const {
           data: { user },
         } = await supabase.auth.getUser();
+
+        if (!isMounted) return;
 
         setUser(user);
 
@@ -475,6 +453,8 @@ export default function CharacterPage() {
           );
         }
 
+        if (!isMounted) return;
+
         setCharacters(loadedCharacters);
 
         // 상세 페이지가 아직 localStorage를 읽으므로 메타데이터 동기화
@@ -487,7 +467,23 @@ export default function CharacterPage() {
       }
     };
 
+    const handleWindowFocus = () => {
+      loadCharacters();
+    };
+
+    const handlePageShow = () => {
+      loadCharacters();
+    };
+
     loadCharacters();
+    window.addEventListener("focus", handleWindowFocus);
+    window.addEventListener("pageshow", handlePageShow);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("focus", handleWindowFocus);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
   }, [router]);
 
   /* =========================================================
@@ -1004,20 +1000,20 @@ export default function CharacterPage() {
               </p>
             </div>
 
-            {user && (
-              <button
-                onClick={() => {
-                  resetForm();
-                  setIsAdding(true);
-                }}
-              className="group flex w-fit items-center gap-2.5 self-start rounded-full bg-[#262626] px-5 py-3 text-[10px] font-medium tracking-[0.1em] text-[var(--archive-bg)] shadow-[0_8px_22px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-0.5 hover:bg-[var(--archive-text)] hover:shadow-[0_12px_28px_rgba(0,0,0,0.12)] sm:self-auto"
-            >
-              <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white/25 text-sm font-light leading-none transition group-hover:rotate-90">
-                +
-              </span>
-                ADD CHARACTER
-              </button>
-            )}
+            <button
+  onClick={() => {
+    resetForm();
+    setIsAdding(true);
+  }}
+  className="group flex w-fit items-center gap-2 self-start rounded-full bg-[#262626] px-4 py-2.5 font-medium tracking-[0.1em] text-[var(--archive-bg)] shadow-[0_8px_22px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-0.5 hover:bg-[var(--archive-text)] hover:shadow-[0_12px_28px_rgba(0,0,0,0.12)] sm:self-auto"
+  style={{
+    fontSize: "9px",
+    lineHeight: 1,
+    fontFamily: "inherit",
+  }}
+>
+  + ADD CHARACTER
+</button>
           </div>
         </div>
 
@@ -1285,27 +1281,38 @@ export default function CharacterPage() {
                     </h2>
 
                     {user && (
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEditModal(character);
-                          }}
-                          className="text-[7px] tracking-[0.06em] text-[var(--archive-muted)] transition hover:text-[var(--archive-text)]"
-                        >
-                          EDIT
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteCharacter(character.id);
-                          }}
-                          className="text-[7px] tracking-[0.06em] text-[var(--archive-muted)] transition hover:text-red-500"
-                        >
-                          DELETE
-                        </button>
-                      </div>
-                    )}
+  <div className="flex shrink-0 items-center gap-1.5">
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        openEditModal(character);
+      }}
+      className="text-[6px] tracking-[0.06em] text-[var(--archive-muted)] transition hover:text-[var(--archive-text)]"
+      style={{
+        fontSize: "7px",
+        lineHeight: 1,
+        fontFamily: "inherit",
+      }}
+    >
+      EDIT
+    </button>
+
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        deleteCharacter(character.id);
+      }}
+      className="text-[6px] tracking-[0.06em] text-[var(--archive-muted)] transition hover:text-red-500"
+      style={{
+        fontSize: "7px",
+        lineHeight: 1,
+        fontFamily: "inherit",
+      }}
+    >
+      DELETE
+    </button>
+  </div>
+)}
                   </div>
 
                   {character.description && (

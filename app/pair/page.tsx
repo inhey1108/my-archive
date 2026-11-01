@@ -8,10 +8,6 @@ import { createClient } from "@/lib/supabase/client";
 const CHARACTER_STORAGE_KEY = "my-archive-characters";
 const PAIR_STORAGE_KEY = "my-archive-pairs";
 
-const DB_NAME = "my-archive-db";
-const DB_VERSION = 1;
-const IMAGE_STORE = "character-images";
-
 type PairImageMode = "single" | "characters";
 
 type Character = {
@@ -54,102 +50,80 @@ type ImageUploadProps = {
   compact?: boolean;
 };
 
-function openImageDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+const IMAGE_BUCKET = "archive-images";
 
-    request.onerror = () => reject(request.error);
+async function saveImageToDB(dataUrl: string): Promise<string> {
+  const supabase = createClient();
 
-    request.onsuccess = () => {
-      const db = request.result;
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
 
-      if (!db.objectStoreNames.contains(IMAGE_STORE)) {
-        reject(new Error(`IndexedDB store "${IMAGE_STORE}" not found.`));
-        return;
-      }
+  if (userError || !user) {
+    throw new Error("로그인이 필요합니다.");
+  }
 
-      resolve(db);
-    };
-  });
+  const id = crypto.randomUUID();
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  const path = `${user.id}/${id}`;
+
+  const { error } = await supabase.storage
+    .from(IMAGE_BUCKET)
+    .upload(path, blob, {
+      contentType: blob.type || "image/png",
+      upsert: true,
+    });
+
+  if (error) throw error;
+
+  return id;
 }
 
-function saveImageToDB(dataUrl: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    fetch(dataUrl)
-      .then((response) => response.blob())
-      .then(async (blob) => {
-        const db = await openImageDB();
-        const id = crypto.randomUUID();
+async function getImageFromDB(id?: string): Promise<string | undefined> {
+  if (!id) return undefined;
 
-        const transaction = db.transaction(IMAGE_STORE, "readwrite");
-        const store = transaction.objectStore(IMAGE_STORE);
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-        store.put(blob, id);
+    if (userError || !user) return undefined;
 
-        transaction.oncomplete = () => {
-          db.close();
-          resolve(id);
-        };
+    const path = `${user.id}/${id}`;
+    const { data, error } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .download(path);
 
-        transaction.onerror = () => {
-          db.close();
-          reject(transaction.error);
-        };
-      })
-      .catch(reject);
-  });
+    if (error || !data) return undefined;
+
+    return URL.createObjectURL(data);
+  } catch {
+    return undefined;
+  }
 }
 
-function getImageFromDB(id?: string): Promise<string | undefined> {
-  if (!id) return Promise.resolve(undefined);
+async function deleteImageFromDB(id?: string): Promise<void> {
+  if (!id) return;
 
-  return new Promise((resolve, reject) => {
-    openImageDB()
-      .then((db) => {
-        const transaction = db.transaction(IMAGE_STORE, "readonly");
-        const request = transaction.objectStore(IMAGE_STORE).get(id);
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-        request.onsuccess = () => {
-          db.close();
+    if (userError || !user) return;
 
-          if (!request.result) {
-            resolve(undefined);
-            return;
-          }
-
-          resolve(URL.createObjectURL(request.result));
-        };
-
-        request.onerror = () => {
-          db.close();
-          reject(request.error);
-        };
-      })
-      .catch(() => resolve(undefined));
-  });
-}
-
-function deleteImageFromDB(id?: string): Promise<void> {
-  if (!id) return Promise.resolve();
-
-  return new Promise((resolve) => {
-    openImageDB()
-      .then((db) => {
-        const transaction = db.transaction(IMAGE_STORE, "readwrite");
-        transaction.objectStore(IMAGE_STORE).delete(id);
-
-        transaction.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-
-        transaction.onerror = () => {
-          db.close();
-          resolve();
-        };
-      })
-      .catch(() => resolve());
-  });
+    await supabase.storage
+      .from(IMAGE_BUCKET)
+      .remove([`${user.id}/${id}`]);
+  } catch {
+    // 이미 삭제되었거나 Storage를 사용할 수 없는 경우 무시
+  }
 }
 
 function readStoredCharacters(): Character[] {
@@ -1639,29 +1613,35 @@ export default function PairPage() {
             <p className="mb-2 text-[10px] tracking-[0.25em] text-[var(--archive-muted)]">
               MY.ARCHIVE
             </p>
-            <h1 className="text-4xl font-light tracking-[-0.04em]">
-              PAIR
-            </h1>
+            <h1 className="text-4xl font-light tracking-[-0.04em]">PAIR</h1>
             <p className="mt-3 text-xs text-[var(--archive-muted)]">
               캐릭터와 캐릭터 사이의 관계를 기록합니다.
             </p>
           </div>
 
           {user && (
-            <button
-              type="button"
-              onClick={startAdd}
-              className="rounded-full bg-[var(--archive-accent)] px-5 py-2.5 text-[10px] font-semibold tracking-[0.15em] text-[var(--archive-bg)] transition hover:bg-[var(--archive-accent)]/80"
-            >
-              + ADD PAIR
-            </button>
-          )}
+  <button
+    type="button"
+    onClick={startAdd}
+    className="rounded-full bg-[var(--archive-accent)] px-4 py-2.5 font-semibold tracking-[0.15em] text-[var(--archive-bg)] transition hover:bg-[var(--archive-accent)]/80"
+    style={{
+      fontSize: "9px",
+      lineHeight: 1,
+      fontFamily: "inherit",
+    }}
+  >
+    + ADD PAIR
+  </button>
+)}
         </header>
 
         {pairs.length === 0 ? (
           <div className="flex min-h-[420px] items-center justify-center rounded-3xl border border-dashed border-[var(--archive-border)] bg-[var(--archive-card)]">
             <div className="text-center">
-              <p className="text-sm text-[var(--archive-muted)]">아직 등록된 PAIR이 없습니다.</p>
+              <p className="text-sm text-[var(--archive-muted)]">
+                아직 등록된 PAIR이 없습니다.
+              </p>
+
               {user && (
                 <button
                   type="button"
@@ -1675,11 +1655,12 @@ export default function PairPage() {
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {pairs.map((pair) => {
+            {filteredPairs.map((pair) => {
               const characterA =
                 pair.characterAType === "archive" && pair.characterAId
                   ? characterMap.get(pair.characterAId)
                   : undefined;
+
               const characterB =
                 pair.characterBType === "archive" && pair.characterBId
                   ? characterMap.get(pair.characterBId)
@@ -1713,7 +1694,7 @@ export default function PairPage() {
                       </div>
 
                       {user && (
-                        <div className="flex gap-2 opacity-0 transition group-hover:opacity-100">
+                        <div className="flex gap-2">
                           <button
                             type="button"
                             onClick={(event) => {
@@ -1722,9 +1703,15 @@ export default function PairPage() {
                             }}
                             onKeyDown={(event) => event.stopPropagation()}
                             className="text-[7px] tracking-[0.12em] text-[var(--archive-text)]/45 hover:text-[var(--archive-text)]"
+                            style={{
+                              fontSize: "6px",
+                              lineHeight: 1,
+                              fontFamily: "inherit",
+                            }}
                           >
                             EDIT
                           </button>
+
                           <button
                             type="button"
                             onClick={(event) => {
@@ -1732,7 +1719,12 @@ export default function PairPage() {
                               handleDelete(pair);
                             }}
                             onKeyDown={(event) => event.stopPropagation()}
-                            className="text-[7px] tracking-[0.12em] text-[var(--archive-muted)] hover:text-red-500"
+                            className="text-[7px] tracking-[0.12em] text-[var(--archive-text)]/45 hover:text-red-500"
+                            style={{
+                              fontSize: "6px",
+                              lineHeight: 1,
+                              fontFamily: "inherit",
+                            }}
                           >
                             DELETE
                           </button>
@@ -1740,7 +1732,7 @@ export default function PairPage() {
                       )}
                     </div>
 
-                    <div className="mt-3 flex items-center gap-2 text-xs text-[var(--archive-text)]/45">
+                    <div className="mt-3 flex items-center gap-2 text-xs text-[var(--archive-muted)]">
                       <span>
                         {pair.characterAName || characterA?.name || "CHARACTER A"}
                       </span>
